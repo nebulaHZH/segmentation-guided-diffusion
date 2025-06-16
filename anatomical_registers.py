@@ -154,35 +154,35 @@ class RegisterModulatedUNet(nn.Module):
         # Compute gating
         gate_value = self.gate(pooled_registers)  # [B, 1]
         
-        # Get UNet features
+        # Get UNet features - always use return_dict=True internally
         unet_output = self.unet(x, timestep, class_labels=class_labels, return_dict=True)
+        sample = unet_output.sample
         
         # Apply register modulation to the output
         # This is a simplified version - in practice you'd modulate intermediate features
+        B, C, H, W = sample.shape
+        
+        # Ensure register_features matches output channels
+        if register_features.shape[1] != C:
+            # If dimensions don't match, pad or truncate
+            if register_features.shape[1] < C:
+                # Pad with zeros
+                padding = torch.zeros(B, C - register_features.shape[1], device=register_features.device)
+                register_features = torch.cat([register_features, padding], dim=1)
+            else:
+                # Truncate
+                register_features = register_features[:, :C]
+        
+        register_features = register_features.view(B, C, 1, 1).expand(-1, -1, H, W)
+        gate_value = gate_value.view(B, 1, 1, 1).expand(-1, C, H, W)
+        
+        modulated_sample = sample * (1 - gate_value) + register_features * gate_value
+        
+        # Return in the format requested by the caller
         if return_dict:
-            sample = unet_output.sample
-            # Apply gated modulation
-            B, C, H, W = sample.shape
-            
-            # Ensure register_features matches output channels
-            if register_features.shape[1] != C:
-                # If dimensions don't match, pad or truncate
-                if register_features.shape[1] < C:
-                    # Pad with zeros
-                    padding = torch.zeros(B, C - register_features.shape[1], device=register_features.device)
-                    register_features = torch.cat([register_features, padding], dim=1)
-                else:
-                    # Truncate
-                    register_features = register_features[:, :C]
-            
-            register_features = register_features.view(B, C, 1, 1).expand(-1, -1, H, W)
-            gate_value = gate_value.view(B, 1, 1, 1).expand(-1, C, H, W)
-            
-            modulated_sample = sample * (1 - gate_value) + register_features * gate_value
-            
-            # Return in same format as original UNet
             from collections import namedtuple
             UNet2DOutput = namedtuple('UNet2DOutput', ['sample'])
             return UNet2DOutput(sample=modulated_sample)
         else:
-            return unet_output
+            # Return as tuple for return_dict=False case
+            return (modulated_sample,)
