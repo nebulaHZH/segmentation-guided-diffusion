@@ -217,9 +217,13 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
             if config.use_anatomical_registers:
                 # Save the UNet and register bank separately
                 if hasattr(unet_module, 'unet'):
-                    # Save the base UNet
-                    base_pipeline = diffusers.DDPMPipeline(unet=unet_module.unet, scheduler=noise_scheduler)
+                    # Save the base UNet with appropriate pipeline type
+                    if config.model_type == "DDPM":
+                        base_pipeline = diffusers.DDPMPipeline(unet=unet_module.unet, scheduler=noise_scheduler)
+                    elif config.model_type == "DDIM":
+                        base_pipeline = diffusers.DDIMPipeline(unet=unet_module.unet, scheduler=noise_scheduler)
                     base_pipeline.save_pretrained(config.output_dir)
+                    
                     # Save the register bank and modulation layers
                     register_state = {
                         'register_bank': unet_module.register_bank.state_dict(),

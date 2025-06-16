@@ -130,8 +130,14 @@ class RegisterModulatedUNet(nn.Module):
         
         # Copy relevant attributes from the wrapped UNet for compatibility
         self.config = self.unet.config
-        self.dtype = self.unet.dtype
-        self.device = self.unet.device
+        
+    @property 
+    def dtype(self):
+        return self.unet.dtype
+        
+    @property
+    def device(self):
+        return next(self.unet.parameters()).device
         
     def forward(self, x, timestep, class_labels=None, return_dict=True):
         """Forward pass with register modulation."""
@@ -157,7 +163,19 @@ class RegisterModulatedUNet(nn.Module):
             sample = unet_output.sample
             # Apply gated modulation
             B, C, H, W = sample.shape
-            register_features = register_features.view(B, -1, 1, 1).expand(-1, C, H, W)
+            
+            # Ensure register_features matches output channels
+            if register_features.shape[1] != C:
+                # If dimensions don't match, pad or truncate
+                if register_features.shape[1] < C:
+                    # Pad with zeros
+                    padding = torch.zeros(B, C - register_features.shape[1], device=register_features.device)
+                    register_features = torch.cat([register_features, padding], dim=1)
+                else:
+                    # Truncate
+                    register_features = register_features[:, :C]
+            
+            register_features = register_features.view(B, C, 1, 1).expand(-1, -1, H, W)
             gate_value = gate_value.view(B, 1, 1, 1).expand(-1, C, H, W)
             
             modulated_sample = sample * (1 - gate_value) + register_features * gate_value
