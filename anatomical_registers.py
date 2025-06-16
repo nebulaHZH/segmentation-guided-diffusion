@@ -115,15 +115,16 @@ class RegisterModulatedUNet(nn.Module):
         self.unet = unet_model
         self.register_bank = register_bank
         
-        # Get UNet's hidden dimension from first down block
-        hidden_dim = self.unet.down_blocks[0].resnets[0].in_channels
+        # Get UNet's input and output dimensions
+        self.in_channels = self.unet.config.in_channels
+        self.out_channels = self.unet.config.out_channels
         
         # Projection layers to inject registers into UNet features
-        self.register_proj = nn.Linear(register_bank.dim, hidden_dim)
+        self.register_proj = nn.Linear(register_bank.dim, self.out_channels)
         self.gate = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 4),
+            nn.Linear(register_bank.dim, register_bank.dim // 4),
             nn.GELU(),
-            nn.Linear(hidden_dim // 4, 1),
+            nn.Linear(register_bank.dim // 4, 1),
             nn.Sigmoid()
         )
         
@@ -138,11 +139,14 @@ class RegisterModulatedUNet(nn.Module):
         register_dict = self.register_bank(x, timestep)
         registers = register_dict["registers"]
         
-        # Project registers to match UNet dimension
-        register_features = self.register_proj(registers.mean(dim=1))  # [B, hidden_dim]
+        # Pool registers across the register dimension
+        pooled_registers = registers.mean(dim=1)  # [B, register_dim]
+        
+        # Project registers to match UNet output dimension
+        register_features = self.register_proj(pooled_registers)  # [B, out_channels]
         
         # Compute gating
-        gate_value = self.gate(register_features)  # [B, 1]
+        gate_value = self.gate(pooled_registers)  # [B, 1]
         
         # Get UNet features
         unet_output = self.unet(x, timestep, class_labels=class_labels, return_dict=True)
