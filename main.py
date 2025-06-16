@@ -16,6 +16,7 @@ import datasets
 # custom imports
 from training import TrainingConfig, train_loop
 from eval import evaluate_generation, evaluate_sample_many
+from anatomical_registers import AnatomicalRegisterBank, RegisterModulatedUNet
 
 def main(
     mode,
@@ -34,6 +35,12 @@ def main(
     resume_epoch=None,
     use_ablated_segmentations=False,
     eval_shuffle_dataloader=True,
+    
+    # anatomical registers
+    use_anatomical_registers=False,
+    num_organ_registers=12,
+    num_spatial_registers=6,
+    num_scale_registers=4,
 
     # arguments only used in eval
     eval_mask_removal=False,
@@ -52,6 +59,9 @@ def main(
 
     if use_ablated_segmentations or eval_mask_removal or eval_blank_mask:
         output_dir += "-ablated"
+        
+    if use_anatomical_registers:
+        output_dir += "-anatomical"
 
     print("output dir: {}".format(output_dir))
 
@@ -75,7 +85,11 @@ def main(
         output_dir = output_dir,
         model_type=model_type,
         resume_epoch=resume_epoch,
-        use_ablated_segmentations=use_ablated_segmentations
+        use_ablated_segmentations=use_ablated_segmentations,
+        use_anatomical_registers=use_anatomical_registers,
+        num_organ_registers=num_organ_registers,
+        num_spatial_registers=num_spatial_registers,
+        num_scale_registers=num_scale_registers
     )
 
     load_images_as_np_arrays = False
@@ -319,6 +333,27 @@ def main(
             print("loading saved model...")
         model = model.from_pretrained(os.path.join(config.output_dir, 'unet'), use_safetensors=True)
 
+    # Add anatomical registers if requested
+    if config.use_anatomical_registers:
+        register_bank = AnatomicalRegisterBank(
+            dim=config.register_dim,
+            num_organ_registers=config.num_organ_registers,
+            num_spatial_registers=config.num_spatial_registers,
+            num_scale_registers=config.num_scale_registers
+        )
+        model = RegisterModulatedUNet(model, register_bank)
+        
+        # Load saved anatomical registers if available
+        register_path = os.path.join(config.output_dir, 'anatomical_registers.pt')
+        if os.path.exists(register_path) and ("eval" in mode or (mode == "train" and resume_epoch is not None)):
+            print(f"Loading anatomical registers from {register_path}")
+            register_state = torch.load(register_path, map_location=device)
+            model.register_bank.load_state_dict(register_state['register_bank'])
+            model.register_proj.load_state_dict(register_state['register_proj'])
+            model.gate.load_state_dict(register_state['gate'])
+        
+        print("Added anatomical register modulation to model")
+
     model = nn.DataParallel(model)
     model.to(device)
 
@@ -405,6 +440,12 @@ if __name__ == "__main__":
     # novel options
     parser.add_argument('--use_ablated_segmentations', action='store_true', help='use mask ablated training and any evaluation? sometimes randomly remove class(es) from mask during training and sampling.')
 
+    # anatomical registers options
+    parser.add_argument('--use_anatomical_registers', action='store_true', help='use anatomical register modulation')
+    parser.add_argument('--num_organ_registers', type=int, default=12, help='number of organ-specific registers')
+    parser.add_argument('--num_spatial_registers', type=int, default=6, help='number of spatial registers')
+    parser.add_argument('--num_scale_registers', type=int, default=4, help='number of scale registers')
+
     # other options
     parser.add_argument('--eval_noshuffle_dataloader', action='store_true', help='if true, don\'t shuffle the eval dataloader')
 
@@ -432,6 +473,12 @@ if __name__ == "__main__":
         args.resume_epoch,
         args.use_ablated_segmentations,
         not args.eval_noshuffle_dataloader,
+        
+        # anatomical registers
+        args.use_anatomical_registers,
+        args.num_organ_registers,
+        args.num_spatial_registers,
+        args.num_scale_registers,
 
         # args only used in eval
         args.eval_mask_removal,

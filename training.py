@@ -46,6 +46,13 @@ class TrainingConfig:
     dataset: str = "breast_mri"
     resume_epoch: int = None
 
+    # Anatomical registers
+    use_anatomical_registers: bool = False
+    num_organ_registers: int = 12
+    num_spatial_registers: int = 6
+    num_scale_registers: int = 4
+    register_dim: int = 512
+    
     # EXPERIMENTAL/UNTESTED: classifier-free class guidance and image translation
     class_conditional: bool = False
     cfg_p_uncond: float = 0.2 # p_uncond in classifier-free guidance paper
@@ -169,26 +176,33 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
             global_step += 1
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
+        # Handle model.module properly for DataParallel and anatomical registers
+        unet_module = model.module
+        if hasattr(unet_module, 'unet'):  # Check if it's RegisterModulatedUNet
+            # For pipelines, we still pass the full RegisterModulatedUNet
+            # but it implements the same interface as UNet2DModel
+            pass
+        
         if config.model_type == "DDPM":
             if config.segmentation_guided:
                 pipeline = SegGuidedDDPMPipeline(
-                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                    unet=unet_module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
                     )
             else:
                 if config.class_conditional:
                     raise NotImplementedError("TODO: Conditional training not implemented for non-seg-guided DDPM")
                 else:
-                    pipeline = diffusers.DDPMPipeline(unet=model.module, scheduler=noise_scheduler)
+                    pipeline = diffusers.DDPMPipeline(unet=unet_module, scheduler=noise_scheduler)
         elif config.model_type == "DDIM":
             if config.segmentation_guided:
                 pipeline = SegGuidedDDIMPipeline(
-                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                    unet=unet_module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
                     )
             else:
                 if config.class_conditional:
                     raise NotImplementedError("TODO: Conditional training not implemented for non-seg-guided DDIM")
                 else:
-                    pipeline = diffusers.DDIMPipeline(unet=model.module, scheduler=noise_scheduler)
+                    pipeline = diffusers.DDIMPipeline(unet=unet_module, scheduler=noise_scheduler)
 
         model.eval()
 
@@ -200,4 +214,21 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
                 evaluate(config, epoch, pipeline)
 
         if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
-            pipeline.save_pretrained(config.output_dir)
+            if config.use_anatomical_registers:
+                # Save the UNet and register bank separately
+                if hasattr(unet_module, 'unet'):
+                    # Save the base UNet
+                    base_pipeline = diffusers.DDPMPipeline(unet=unet_module.unet, scheduler=noise_scheduler)
+                    base_pipeline.save_pretrained(config.output_dir)
+                    # Save the register bank and modulation layers
+                    register_state = {
+                        'register_bank': unet_module.register_bank.state_dict(),
+                        'register_proj': unet_module.register_proj.state_dict(),
+                        'gate': unet_module.gate.state_dict(),
+                    }
+                    torch.save(register_state, os.path.join(config.output_dir, 'anatomical_registers.pt'))
+                    print(f"Saved anatomical registers to {config.output_dir}/anatomical_registers.pt")
+                else:
+                    pipeline.save_pretrained(config.output_dir)
+            else:
+                pipeline.save_pretrained(config.output_dir)

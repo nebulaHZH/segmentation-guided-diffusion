@@ -33,20 +33,23 @@ def evaluate_sample_many(
 
     # for loading segs to condition on:
     # setup for sampling
+    # Handle model.module properly for DataParallel and anatomical registers
+    unet_module = model.module
+    
     if config.model_type == "DDPM":
         if config.segmentation_guided:
             pipeline = SegGuidedDDPMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                unet=unet_module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
                 )
         else:
-            pipeline = diffusers.DDPMPipeline(unet=model.module, scheduler=noise_scheduler)
+            pipeline = diffusers.DDPMPipeline(unet=unet_module, scheduler=noise_scheduler)
     elif config.model_type == "DDIM":
         if config.segmentation_guided:
             pipeline = SegGuidedDDIMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                unet=unet_module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
                 )
         else:
-            pipeline = diffusers.DDIMPipeline(unet=model.module, scheduler=noise_scheduler)
+            pipeline = diffusers.DDIMPipeline(unet=unet_module, scheduler=noise_scheduler)
 
 
     sample_dir = test_dir = os.path.join(config.output_dir, "samples_many_{}".format(sample_size))
