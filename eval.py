@@ -57,26 +57,42 @@ def evaluate_sample_many(
         os.makedirs(sample_dir)
 
     num_sampled = 0
+    # Create iterator from dataloader
+    eval_iter = iter(eval_dataloader)
+    
     # keep sampling images until we have enough
-    for bidx, seg_batch in tqdm(enumerate(eval_dataloader), total=len(eval_dataloader)):
-        if num_sampled < sample_size:
+    with tqdm(total=sample_size, desc="Sampling images") as pbar:
+        while num_sampled < sample_size:
+            try:
+                seg_batch = next(eval_iter)
+            except StopIteration:
+                # Reset iterator if we've exhausted the dataloader
+                eval_iter = iter(eval_dataloader)
+                seg_batch = next(eval_iter)
+            
             if config.segmentation_guided:
                 current_batch_size = [v for k, v in seg_batch.items() if k.startswith("seg_")][0].shape[0]
             else:
                 current_batch_size = config.eval_batch_size
 
+            # Don't generate more images than needed
+            images_to_generate = min(current_batch_size, sample_size - num_sampled)
+            
             if config.segmentation_guided:
                 images = pipeline(
-                    batch_size = current_batch_size,
+                    batch_size = images_to_generate,
                     seg_batch=seg_batch,
                 ).images
             else:
                 images = pipeline(
-                    batch_size = current_batch_size,
+                    batch_size = images_to_generate,
                 ).images
 
             # save each image in the list separately
             for i, img in enumerate(images):
+                if num_sampled + i >= sample_size:
+                    break  # Stop if we've reached the target
+                    
                 if config.segmentation_guided:
                     # name base on input mask fname
                     img_fname = "{}/condon_{}".format(sample_dir, seg_batch["image_filenames"][i])
@@ -85,7 +101,8 @@ def evaluate_sample_many(
                 img.save(img_fname)
 
             num_sampled += len(images)
-            print("sampled {}/{}.".format(num_sampled, sample_size))
+            pbar.update(len(images))
+            pbar.set_postfix({"sampled": f"{num_sampled}/{sample_size}"})
 
 
 
