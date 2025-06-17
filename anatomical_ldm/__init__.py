@@ -16,8 +16,9 @@ from .vae import AnatomicalVAE, create_anatomical_vae
 from .anatomical_registers import AnatomicalRegisterBank, create_anatomical_registers
 from .anatomical_unet import AnatomicalUNet2DConditionModel, create_anatomical_unet
 from .train_ldm import AnatomicalLDMPipeline
+from .general_supervised_registers import GeneralSupervisedAnatomicalRegisterBank, create_general_supervised_registers
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Anatomical LDM Research Team"
 
 __all__ = [
@@ -28,4 +29,6 @@ __all__ = [
     "AnatomicalUNet2DConditionModel",
     "create_anatomical_unet",
     "AnatomicalLDMPipeline",
+    "GeneralSupervisedAnatomicalRegisterBank",
+    "create_general_supervised_registers",
 ]

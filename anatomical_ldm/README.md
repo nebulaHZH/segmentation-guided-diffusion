@@ -1,6 +1,11 @@
 # Anatomical Latent Diffusion Models
 
-A complete implementation of anatomical-aware latent diffusion models for chest X-ray generation, addressing the fundamental issues identified in pixel-space approaches.
+A complete implementation of anatomical-aware latent diffusion models for **any medical imaging modality**, addressing the fundamental issues identified in pixel-space approaches.
+
+## 🚨 **IMPORTANT: Use the Fixed Implementation**
+
+- ✅ **Use**: `general_supervised_registers.py` - Works with any multiclass medical dataset
+- ❌ **Don't use**: `supervised_registers.py` - Hardcoded for chest X-rays only
 
 ## 🎯 Key Features
 
