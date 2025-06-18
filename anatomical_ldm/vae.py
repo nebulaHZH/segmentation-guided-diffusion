@@ -121,30 +121,17 @@ class AnatomicalVAE(AutoencoderKL):
             return_dict: Whether to return dict
             
         Returns:
-            Encoding output with anatomical features
+            Encoding output (unchanged from parent, anatomical features stored separately)
         """
         # Reset anatomical features
         self._anatomical_features = None
         
-        # Standard encoding (triggers our hook)
+        # Standard encoding (triggers our hook) - return unchanged
         posterior = super().encode(x, return_dict=return_dict)
         
-        if return_dict:
-            # Add anatomical features to output
-            if hasattr(posterior, 'latent_dist'):
-                # Handle AutoencoderKLOutput
-                result = {
-                    "latent_dist": posterior.latent_dist,
-                    "anatomical_features": self._anatomical_features,
-                }
-            else:
-                # Handle dict output
-                result = dict(posterior)
-                result["anatomical_features"] = self._anatomical_features
-            
-            return result
-        else:
-            return posterior
+        # Don't modify the return value - just capture anatomical features via hook
+        # Anatomical features can be accessed via get_anatomical_features()
+        return posterior
     
     def forward(
         self,
