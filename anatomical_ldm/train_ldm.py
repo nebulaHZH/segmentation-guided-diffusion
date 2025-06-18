@@ -594,8 +594,8 @@ class LDMTrainer:
                 try:
                     # Try with and without text
                     prompts = [
-                        "a chest X-ray showing normal lungs",
-                        "chest radiograph with clear lung fields", 
+                        "a medical image showing normal anatomy",
+                        "medical scan with clear anatomical structures", 
                         None,  # Unconditional
                         None,  # Unconditional
                     ]

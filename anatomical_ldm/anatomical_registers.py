@@ -145,13 +145,11 @@ class AnatomicalRegisterBank(nn.Module):
         self.num_organs = num_organs
         self.spatial_resolution = spatial_resolution
         
-        # Default organ names for chest X-rays
+        # Default generic organ names - should be customized for specific datasets
         if organ_names is None:
             self.organ_names = [
-                "heart", "left_lung", "right_lung", "liver", "stomach",
-                "left_ribs", "right_ribs", "spine", "clavicle", "diaphragm",
-                "mediastinum", "background"
-            ][:num_organs]
+                f"organ_{i}" for i in range(num_organs-1)
+            ] + ["background"]
         else:
             self.organ_names = organ_names
         
@@ -202,16 +200,19 @@ class AnatomicalRegisterBank(nn.Module):
         
         # Initialize stage weights to reasonable defaults
         with torch.no_grad():
-            # Early stage: focus on layout organs (heart, lungs, spine)
+            # Early stage: focus on first few major structures
             self.stage_organ_weights[0].weight.fill_(0.1)
-            self.stage_organ_weights[0].weight[:, [0, 1, 2, 7]] = 1.0  # heart, lungs, spine
+            if num_organs >= 4:
+                self.stage_organ_weights[0].weight[:, :min(4, num_organs)] = 1.0  # First few major structures
             
             # Middle stage: balanced attention
             self.stage_organ_weights[1].weight.fill_(0.5)
             
-            # Late stage: focus on detail organs (ribs, clavicle)
+            # Late stage: focus on detail structures (latter half of organs)
             self.stage_organ_weights[2].weight.fill_(0.1)
-            self.stage_organ_weights[2].weight[:, [5, 6, 8]] = 1.0  # ribs, clavicle
+            if num_organs >= 8:
+                detail_start = num_organs // 2
+                self.stage_organ_weights[2].weight[:, detail_start:] = 1.0  # Detail structures
     
     def forward(
         self,

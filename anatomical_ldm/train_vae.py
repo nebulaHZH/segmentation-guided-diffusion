@@ -28,9 +28,9 @@ from .vae import AnatomicalVAE, create_anatomical_vae
 logger = logging.getLogger(__name__)
 
 
-class ChestXrayDataset(Dataset):
+class MedicalImageDataset(Dataset):
     """
-    Dataset for chest X-ray images with optional anatomical masks.
+    Dataset for medical images with optional anatomical masks.
     """
     
     def __init__(
@@ -405,7 +405,7 @@ def create_dataloaders(
     """Create train and validation dataloaders."""
     
     # Training dataset
-    train_dataset = ChestXrayDataset(
+    train_dataset = MedicalImageDataset(
         image_dir=train_dir,
         mask_dir=mask_dir,
         image_size=image_size,
@@ -423,7 +423,7 @@ def create_dataloaders(
     # Validation dataset
     val_dataloader = None
     if val_dir:
-        val_dataset = ChestXrayDataset(
+        val_dataset = MedicalImageDataset(
             image_dir=val_dir,
             mask_dir=val_mask_dir,
             image_size=image_size,

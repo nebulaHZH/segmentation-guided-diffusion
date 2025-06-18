@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 class AnatomicalMetrics:
     """
-    Metrics for evaluating anatomical quality of generated chest X-rays.
+    Metrics for evaluating anatomical quality of generated medical images.
     """
     
     def __init__(self, device: str = 'cuda'):
@@ -51,7 +51,7 @@ class AnatomicalMetrics:
         """Load pretrained anatomical segmentation model if available."""
         try:
             # Try to load a pretrained model for anatomical evaluation
-            # This could be a model trained to segment chest X-ray anatomy
+            # This could be a model trained to segment medical image anatomy
             # For now, we'll skip this and focus on standard metrics
             pass
         except Exception as e:
@@ -436,16 +436,16 @@ class LDMEvaluator:
 
 
 def create_evaluation_prompts() -> List[str]:
-    """Create a set of evaluation prompts for chest X-rays."""
+    """Create a set of evaluation prompts for medical images."""
     return [
-        "a normal chest X-ray with clear lung fields",
-        "chest radiograph showing healthy lungs and heart",
-        "frontal chest X-ray with normal cardiac silhouette",
-        "chest X-ray with well-defined diaphragm and ribs",
-        "normal posteroanterior chest radiograph",
-        "chest X-ray showing symmetric lung fields",
-        "clear chest radiograph with normal mediastinum",
-        "chest X-ray with normal pulmonary vasculature",
+        "a normal medical image with clear anatomical structures",
+        "medical scan showing healthy anatomy",
+        "high-quality medical image with well-defined structures",
+        "medical image with clear anatomical boundaries",
+        "normal medical scan",
+        "medical image showing symmetric anatomical features",
+        "clear medical scan with normal anatomy",
+        "medical image with good contrast and detail",
     ]
 
 

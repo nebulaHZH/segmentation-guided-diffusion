@@ -41,13 +41,11 @@ class SupervisedAnatomicalRegisterBank(nn.Module):
         self.anatomical_supervision_weight = anatomical_supervision_weight
         self.anatomical_consistency_weight = anatomical_consistency_weight
         
-        # Default organ mapping for chest X-rays
+        # Default generic organ mapping - should be customized for specific datasets
         if organ_names is None:
             self.organ_names = [
-                "background", "heart", "left_lung", "right_lung", "liver", 
-                "left_ribs", "right_ribs", "spine", "clavicle", "diaphragm",
-                "mediastinum", "soft_tissue"
-            ][:num_organs]
+                "background"
+            ] + [f"organ_{i}" for i in range(1, num_organs)]
         else:
             self.organ_names = organ_names
         
@@ -123,41 +121,15 @@ class SupervisedAnatomicalRegisterBank(nn.Module):
         ])
     
     def _init_anatomical_priors(self):
-        """Initialize with anatomical priors for chest X-rays."""
+        """Initialize with generic spatial priors."""
         
         with torch.no_grad():
             # Initialize structure embeddings with small random values
             nn.init.xavier_uniform_(self.structure_embeddings, gain=0.1)
             
-            # Initialize anatomical attention with rough anatomical priors
-            # These are rough estimates that will be refined during training
-            anatomical_priors = {
-                "heart": (0.3, 0.6),        # Left-center
-                "left_lung": (0.2, 0.4),    # Left side
-                "right_lung": (0.6, 0.4),   # Right side
-                "spine": (0.5, 0.5),        # Center
-                "liver": (0.7, 0.8),        # Right-lower
-            }
-            
-            for i, organ_name in enumerate(self.organ_names):
-                if organ_name in anatomical_priors:
-                    cx, cy = anatomical_priors[organ_name]
-                    # Initialize attention to focus on anatomically correct regions
-                    attention_map = torch.zeros(self.spatial_resolution, self.spatial_resolution)
-                    center_x = int(cx * self.spatial_resolution)
-                    center_y = int(cy * self.spatial_resolution)
-                    
-                    # Gaussian blob around anatomical center
-                    for y in range(self.spatial_resolution):
-                        for x in range(self.spatial_resolution):
-                            dist = ((x - center_x)**2 + (y - center_y)**2) ** 0.5
-                            attention_map[y, x] = math.exp(-dist / 2.0)
-                    
-                    attention_map = attention_map / attention_map.sum()
-                    
-                    # Set final layer bias to match this prior
-                    if len(self.structure_attention[i]) >= 2:
-                        self.structure_attention[i][-2].bias.data = attention_map.flatten()
+            # Initialize anatomical attention with generic spatial distribution
+            # No specific anatomical priors - let the model learn from data
+            # All parameters use default initialization
     
     def predict_anatomical_structures(
         self, 
@@ -253,41 +225,23 @@ class SupervisedAnatomicalRegisterBank(nn.Module):
         predicted_attention: torch.Tensor,
         target_attention: torch.Tensor,
     ) -> torch.Tensor:
-        """Compute loss for anatomical spatial relationships."""
+        """Compute loss for general anatomical spatial relationships."""
         
-        # Encourage heart to be left of center
-        if "heart" in self.organ_names:
-            heart_idx = self.organ_names.index("heart")
-            heart_attention = predicted_attention[:, heart_idx]  # [B, H, W]
-            
-            # Create coordinate grids
-            h, w = heart_attention.shape[-2:]
-            y_coords = torch.linspace(-1, 1, h, device=heart_attention.device)
-            x_coords = torch.linspace(-1, 1, w, device=heart_attention.device)
-            x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing='ij')
-            x_grid = x_grid.T  # [H, W]
-            
-            # Heart should have negative x center of mass (left side)
-            heart_center_x = (heart_attention * x_grid.unsqueeze(0)).sum(dim=(1, 2)) / (heart_attention.sum(dim=(1, 2)) + 1e-6)
-            heart_loss = F.relu(heart_center_x + 0.2).mean()  # Penalize if center is too far right
-        else:
-            heart_loss = 0.0
+        # Generic spatial coherence loss - encourage neighboring structures to be similar
+        batch_size, num_organs, h, w = predicted_attention.shape
         
-        # Encourage lung symmetry
-        lung_loss = 0.0
-        if "left_lung" in self.organ_names and "right_lung" in self.organ_names:
-            left_idx = self.organ_names.index("left_lung")
-            right_idx = self.organ_names.index("right_lung")
-            
-            left_attention = predicted_attention[:, left_idx]
-            right_attention = predicted_attention[:, right_idx]
-            
-            # Encourage similar attention patterns (but mirrored)
-            right_flipped = torch.flip(right_attention, dims=[-1])  # Flip horizontally
-            symmetry_loss = F.mse_loss(left_attention, right_flipped)
-            lung_loss = symmetry_loss
+        # Compute spatial smoothness across organs
+        spatial_loss = 0.0
         
-        return heart_loss + lung_loss
+        # Horizontal smoothness
+        diff_h = predicted_attention[:, :, :, 1:] - predicted_attention[:, :, :, :-1]
+        spatial_loss += (diff_h ** 2).mean()
+        
+        # Vertical smoothness  
+        diff_v = predicted_attention[:, :, 1:, :] - predicted_attention[:, :, :-1, :]
+        spatial_loss += (diff_v ** 2).mean()
+        
+        return spatial_loss * 0.1  # Small weight for spatial coherence
     
     def forward(
         self,

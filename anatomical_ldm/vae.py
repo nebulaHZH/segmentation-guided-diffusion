@@ -1,5 +1,5 @@
 """
-Anatomical-Aware VAE for Chest X-ray Latent Diffusion Models.
+Anatomical-Aware VAE for Medical Image Latent Diffusion Models.
 Extends diffusers AutoencoderKL with anatomical consistency features.
 """
 
@@ -17,7 +17,7 @@ logger = logging.get_logger(__name__)
 
 class AnatomicalVAE(AutoencoderKL):
     """
-    Anatomical-Aware Variational Autoencoder for chest X-rays.
+    Anatomical-Aware Variational Autoencoder for medical images.
     Extends diffusers AutoencoderKL with anatomical consistency features.
     """
     
@@ -281,7 +281,7 @@ def create_anatomical_vae(
     **kwargs
 ) -> AnatomicalVAE:
     """
-    Create anatomical VAE with sensible defaults for chest X-rays.
+    Create anatomical VAE with sensible defaults for medical images.
     
     Args:
         image_size: Input image size
@@ -306,7 +306,7 @@ def create_anatomical_vae(
     up_blocks = tuple("UpDecoderBlock2D" for _ in range(len(down_blocks)))
     
     return AnatomicalVAE(
-        in_channels=1,  # Grayscale chest X-rays
+        in_channels=1,  # Grayscale medical images
         out_channels=1,
         latent_channels=latent_channels,
         down_block_types=down_blocks,
