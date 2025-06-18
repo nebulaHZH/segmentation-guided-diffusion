@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Optional, Tuple, Union
-from diffusers.models import AutoencoderKL
+from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL
 from diffusers.models.attention_processor import Attention
 from diffusers.configuration_utils import register_to_config
 from diffusers.utils import logging
@@ -165,7 +165,7 @@ class AnatomicalVAE(AutoencoderKL):
         Returns:
             VAE output with anatomical features
         """
-        # Standard VAE forward
+        # Standard VAE forward - don't override, let parent handle everything
         output = super().forward(
             sample=sample,
             sample_posterior=sample_posterior,
@@ -173,23 +173,18 @@ class AnatomicalVAE(AutoencoderKL):
             generator=generator,
         )
         
-        if return_dict:
-            if hasattr(output, 'sample'):
-                # Handle AutoencoderKLOutput
-                result = {
-                    "sample": output.sample,
-                    "anatomical_features": self._anatomical_features,
-                }
-                if hasattr(output, 'latent_dist'):
-                    result["latent_dist"] = output.latent_dist
-            else:
-                # Handle dict output
-                result = dict(output)
-                result["anatomical_features"] = self._anatomical_features
-            
-            return result
-        else:
-            return output
+        # Just return the parent output unchanged to maintain compatibility
+        # Anatomical features are captured by our hook and can be accessed separately
+        return output
+    
+    def get_anatomical_features(self) -> Optional[torch.Tensor]:
+        """
+        Get the last computed anatomical features.
+        
+        Returns:
+            Last anatomical features computed during forward/encode pass
+        """
+        return self._anatomical_features
     
     def get_anatomical_consistency_loss(
         self,
@@ -249,8 +244,10 @@ class AnatomicalVAE(AutoencoderKL):
         """
         # Forward pass
         output = self.forward(sample, sample_posterior=True, return_dict=True)
-        reconstruction = output["sample"]
-        anatomical_features = output["anatomical_features"]
+        reconstruction = output.sample
+        
+        # Get anatomical features from our hook
+        anatomical_features = self._anatomical_features
         
         # Reconstruction loss
         recon_loss = F.mse_loss(reconstruction, sample)
@@ -260,8 +257,11 @@ class AnatomicalVAE(AutoencoderKL):
             kl_loss = output.latent_dist.kl().mean()
         else:
             # Fallback KL computation
-            posterior = self.encode(sample, return_dict=True)["latent_dist"]
-            kl_loss = posterior.kl().mean()
+            posterior = self.encode(sample, return_dict=True)
+            if isinstance(posterior, dict):
+                kl_loss = posterior["latent_dist"].kl().mean()
+            else:
+                kl_loss = posterior.latent_dist.kl().mean()
         
         # Anatomical consistency loss
         anatomical_loss = self.get_anatomical_consistency_loss(

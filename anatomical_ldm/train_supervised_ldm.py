@@ -26,7 +26,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from .vae import AnatomicalVAE
 from .anatomical_unet import AnatomicalUNet2DConditionModel
-from .supervised_registers import SupervisedAnatomicalRegisterBank
+from .general_supervised_registers import GeneralSupervisedAnatomicalRegisterBank
 from .train_ldm import AnatomicalLDMPipeline
 
 logger = logging.getLogger(__name__)
@@ -311,7 +311,7 @@ class SupervisedLDMTrainer:
             # Prepare latent features for anatomical prediction
             # Use clean latents for anatomical learning (not noisy ones)
             if hasattr(self.unet, 'anatomical_registers') and isinstance(
-                self.unet.anatomical_registers, SupervisedAnatomicalRegisterBank
+                self.unet.anatomical_registers, GeneralSupervisedAnatomicalRegisterBank
             ):
                 # Get anatomical predictions from register bank
                 register_dict = self.unet.anatomical_registers(
@@ -614,9 +614,9 @@ def main():
     )
     
     # Replace register bank with supervised version
-    unet.anatomical_registers = SupervisedAnatomicalRegisterBank(
+    unet.anatomical_registers = GeneralSupervisedAnatomicalRegisterBank(
         d_model=args.anatomical_conditioning_dim,
-        num_organs=args.num_organs,
+        num_classes=args.num_organs,
         spatial_resolution=8,
     )
     

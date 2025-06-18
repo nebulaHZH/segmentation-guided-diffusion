@@ -6,7 +6,7 @@ Extends diffusers UNet2DConditionModel with anatomical conditioning.
 import torch
 import torch.nn as nn
 from typing import Dict, Optional, Tuple, Union, Any
-from diffusers.models.unet_2d_condition import UNet2DConditionModel
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
 from diffusers.models.attention_processor import Attention, AttnProcessor
 from diffusers.configuration_utils import register_to_config
 from diffusers.utils import logging
