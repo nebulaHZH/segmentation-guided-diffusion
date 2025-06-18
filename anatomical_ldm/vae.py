@@ -183,22 +183,26 @@ class AnatomicalVAE(AutoencoderKL):
         
         Args:
             anatomical_features: Predicted anatomical regions [B, num_regions, H, W]
-            target_masks: Optional target segmentation masks [B, num_regions, H, W]
+            target_masks: Optional target segmentation masks [B, H, W] with class indices
             
         Returns:
             Anatomical consistency loss
         """
         if target_masks is not None:
             # Supervised anatomical loss
-            target_masks = F.interpolate(
-                target_masks.float(),
-                size=anatomical_features.shape[-2:],
-                mode='nearest'
-            )
-            # Remove channel dimension if present for cross_entropy
+            # Ensure target_masks is [B, H, W] with class indices
             if target_masks.dim() == 4 and target_masks.shape[1] == 1:
                 target_masks = target_masks.squeeze(1)
-            return F.cross_entropy(anatomical_features, target_masks.long())
+            
+            # Resize masks to match anatomical features spatial size
+            if target_masks.shape[-2:] != anatomical_features.shape[-2:]:
+                target_masks = F.interpolate(
+                    target_masks.unsqueeze(1).float(),
+                    size=anatomical_features.shape[-2:],
+                    mode='nearest'
+                ).squeeze(1).long()
+            
+            return F.cross_entropy(anatomical_features, target_masks)
         else:
             # Unsupervised anatomical regularization
             # Encourage spatial coherence and separation
