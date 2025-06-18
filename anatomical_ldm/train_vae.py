@@ -95,15 +95,14 @@ class MedicalImageDataset(Dataset):
                 mask = Image.open(mask_path)
                 mask = self.mask_transform(mask)
                 
-                # Convert to multi-class mask if needed
-                if mask.shape[0] == 1:
-                    # Single channel mask - assume class indices
-                    mask = mask.squeeze(0).long()
-                    # Convert to one-hot encoding
-                    num_classes = mask.max().item() + 1
-                    mask_onehot = torch.zeros(num_classes, *mask.shape)
-                    mask_onehot.scatter_(0, mask.unsqueeze(0), 1)
-                    mask = mask_onehot
+                # Keep mask as class indices for cross-entropy loss
+                if mask.dim() == 3 and mask.shape[0] == 1:
+                    # Single channel mask - squeeze channel dimension
+                    mask = mask.squeeze(0)
+                
+                # Convert to long tensor with class indices
+                # PNG values 0,1,2,... will be preserved as class indices
+                mask = (mask * 255).long() if mask.max() <= 1.0 else mask.long()
                 
                 result['mask'] = mask
             except Exception as e:
