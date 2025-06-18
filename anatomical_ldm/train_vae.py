@@ -132,7 +132,6 @@ class VAETrainer:
         gradient_clip: float = 1.0,
         use_wandb: bool = False,
         wandb_project: str = "anatomical-ldm",
-        use_l1_loss: bool = False,
     ):
         self.vae = vae.to(device)
         self.train_dataloader = train_dataloader
@@ -140,7 +139,6 @@ class VAETrainer:
         self.device = device
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.use_l1_loss = use_l1_loss
         
         # Optimizer and scheduler
         self.optimizer = AdamW(
@@ -198,7 +196,6 @@ class VAETrainer:
             sample=images,
             target_masks=masks,
             beta=beta,
-            use_l1_loss=self.use_l1_loss,
         )
         
         total_loss = loss_dict['total_loss']
@@ -471,10 +468,6 @@ def main():
                         help="Number of training epochs")
     parser.add_argument("--learning_rate", type=float, default=1e-4,
                         help="Learning rate")
-    parser.add_argument("--use_l1_loss", action="store_true",
-                        help="Use L1 loss instead of MSE for reconstruction (better for medical images)")
-    parser.add_argument("--scaling_factor", type=float, default=0.18215,
-                        help="VAE scaling factor (adjust for different image types)")
     parser.add_argument("--beta_start", type=float, default=1e-6,
                         help="Initial KL beta")
     parser.add_argument("--beta_end", type=float, default=1e-2,
@@ -528,7 +521,6 @@ def main():
         latent_channels=args.latent_channels,
         num_anatomical_regions=args.num_anatomical_regions,
         anatomical_loss_weight=args.anatomical_loss_weight,
-        scaling_factor=args.scaling_factor,
     )
     
     # Create trainer
@@ -545,7 +537,6 @@ def main():
         anatomical_loss_weight=args.anatomical_loss_weight,
         use_wandb=args.use_wandb,
         wandb_project=args.wandb_project,
-        use_l1_loss=args.use_l1_loss,
     )
     
     # Resume from checkpoint if specified
