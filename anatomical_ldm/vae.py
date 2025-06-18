@@ -195,6 +195,9 @@ class AnatomicalVAE(AutoencoderKL):
                 size=anatomical_features.shape[-2:],
                 mode='nearest'
             )
+            # Remove channel dimension if present for cross_entropy
+            if target_masks.dim() == 4 and target_masks.shape[1] == 1:
+                target_masks = target_masks.squeeze(1)
             return F.cross_entropy(anatomical_features, target_masks.long())
         else:
             # Unsupervised anatomical regularization
