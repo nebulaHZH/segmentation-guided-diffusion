@@ -66,9 +66,8 @@ class MedicalImageDataset(Dataset):
         # Image transforms
         self.image_transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
-            transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5])  # [-1, 1]
+            transforms.Normalize([0.5], [0.5])  # [-1, 1] for single channel
         ])
         
         # Mask transforms (if using masks)
@@ -83,7 +82,7 @@ class MedicalImageDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         # Load image
         image_path = self.image_paths[idx]
-        image = Image.open(image_path).convert('RGB')
+        image = Image.open(image_path).convert('L')  # Load directly as grayscale
         image = self.image_transform(image)
         
         result = {'image': image}
