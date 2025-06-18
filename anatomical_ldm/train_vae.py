@@ -295,9 +295,10 @@ class VAETrainer:
             
             # Encode and decode
             output = self.vae(real_images, sample_posterior=True, return_dict=True)
-            reconstructions = output['sample']
+            reconstructions = output.sample  # Fixed: use .sample instead of ['sample']
             
-            # Concatenate real and reconstructed
+            # Concatenate real and reconstructed for comparison
+            # Top row: original images, Bottom row: reconstructions
             comparison = torch.cat([real_images, reconstructions], dim=0)
             
             return comparison
@@ -352,25 +353,29 @@ class VAETrainer:
                 val_losses = self.validate()
                 avg_losses.update(val_losses)
                 
-                # Generate samples
+                # Generate reconstruction samples
                 if self.val_dataloader or self.train_dataloader:
                     try:
-                        samples = self.generate_samples()
-                        sample_path = self.output_dir / f"samples_epoch_{epoch+1}.png"
+                        samples = self.generate_samples(num_samples=8)  # 8 original + 8 reconstructed = 16 total
+                        sample_path = self.output_dir / f"reconstructions_epoch_{epoch+1}.png"
                         save_image(
                             samples, 
                             sample_path, 
-                            nrow=len(samples)//2, 
+                            nrow=8,  # 8 images per row (top row: originals, bottom row: reconstructions)
                             normalize=True, 
-                            value_range=(-1, 1)
+                            value_range=(-1, 1),
+                            pad_value=1.0  # White padding between images
                         )
+                        
+                        logger.info(f"Saved reconstruction samples to {sample_path}")
                         
                         if self.use_wandb:
                             wandb.log({
-                                "samples": wandb.Image(str(sample_path))
+                                "reconstructions": wandb.Image(str(sample_path), 
+                                    caption=f"Top row: Original images, Bottom row: VAE reconstructions (Epoch {epoch+1})")
                             }, step=self.global_step)
                     except Exception as e:
-                        logger.warning(f"Failed to generate samples: {e}")
+                        logger.warning(f"Failed to generate reconstruction samples: {e}")
             
             # Logging
             loss_str = " | ".join([f"{k}: {v:.4f}" for k, v in avg_losses.items()])
