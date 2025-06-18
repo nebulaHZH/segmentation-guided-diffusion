@@ -220,6 +220,7 @@ class AnatomicalVAE(AutoencoderKL):
         sample: torch.Tensor,
         target_masks: Optional[torch.Tensor] = None,
         beta: float = 1.0,
+        use_l1_loss: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """
         Compute full VAE loss with anatomical consistency.
@@ -228,6 +229,7 @@ class AnatomicalVAE(AutoencoderKL):
             sample: Input images [B, 1, H, W]
             target_masks: Optional anatomical masks [B, num_regions, H, W]
             beta: KL loss weight
+            use_l1_loss: Whether to use L1 loss instead of MSE for reconstruction
             
         Returns:
             Dict of loss components
@@ -239,8 +241,11 @@ class AnatomicalVAE(AutoencoderKL):
         # Get anatomical features from our hook
         anatomical_features = self._anatomical_features
         
-        # Reconstruction loss
-        recon_loss = F.mse_loss(reconstruction, sample)
+        # Reconstruction loss - L1 is often better for medical images
+        if use_l1_loss:
+            recon_loss = F.l1_loss(reconstruction, sample)
+        else:
+            recon_loss = F.mse_loss(reconstruction, sample)
         
         # KL loss
         if hasattr(output, "latent_dist"):
@@ -299,9 +304,13 @@ def create_anatomical_vae(
     elif image_size >= 256:
         down_blocks = ("DownEncoderBlock2D",) * 3  # 4x downsampling  
         block_channels = (128, 256, 512)
+    elif image_size >= 64:
+        down_blocks = ("DownEncoderBlock2D",) * 3  # 4x downsampling to 8x8
+        block_channels = (64, 128, 256)
     else:
-        down_blocks = ("DownEncoderBlock2D",) * 2  # 2x downsampling
-        block_channels = (128, 256)
+        # For very small images (32x32), use wider network with fewer layers
+        down_blocks = ("DownEncoderBlock2D",) * 2  # 2x downsampling to 8x8
+        block_channels = (256, 512)  # More channels to compensate for smaller spatial size
     
     up_blocks = tuple("UpDecoderBlock2D" for _ in range(len(down_blocks)))
     
