@@ -14,7 +14,7 @@ from diffusers.optimization import get_cosine_schedule_with_warmup
 import datasets
 
 # custom imports
-from training import TrainingConfig, train_loop
+from training import TrainingConfig, train_loop, training_state_path
 from eval import evaluate_generation, evaluate_sample_many
 
 def main(
@@ -37,6 +37,7 @@ def main(
     save_model_epochs,
     output_dir,
     resume_epoch=None,
+    resume_latest=False,
     use_ablated_segmentations=False,
     eval_shuffle_dataloader=True,
 
@@ -334,12 +335,38 @@ def main(
         ),
     )
 
-    if (mode == "train" and resume_epoch is not None) or "eval" in mode:
-        if mode == "train":
-            print("resuming from model at training epoch {}".format(resume_epoch))
-        elif "eval" in mode:
-            print("loading saved model...")
+    resume_state = None
+    state_path = training_state_path(config.output_dir)
+    if mode == "train" and resume_latest:
+        if os.path.exists(state_path):
+            print("resuming full training state from {}".format(state_path))
+            resume_state = torch.load(state_path, map_location="cpu")
+            model.load_state_dict(resume_state["model"])
+        elif os.path.exists(os.path.join(config.output_dir, 'unet')):
+            raise FileNotFoundError(
+                "found an old model checkpoint but no full training state at {}. "
+                "Use --resume_epoch with the next epoch number to resume weights only, "
+                "or disable resume to start fresh.".format(state_path)
+            )
+        else:
+            print("no previous training state found; starting a fresh training run")
+    elif mode == "train" and resume_epoch is not None:
+        print("resuming model weights from epoch {} with fresh optimizer state".format(resume_epoch))
         model = model.from_pretrained(os.path.join(config.output_dir, 'unet'), use_safetensors=True)
+    elif "eval" in mode:
+        print("loading saved model...")
+        unet_dir = os.path.join(config.output_dir, 'unet')
+        if os.path.exists(unet_dir):
+            model = model.from_pretrained(unet_dir, use_safetensors=True)
+        if os.path.exists(state_path):
+            try:
+                latest_state = torch.load(state_path, map_location="cpu")
+                model.load_state_dict(latest_state["model"])
+                print("loaded newer training state weights from {}".format(state_path))
+            except RuntimeError as exc:
+                print("warning: could not load training state weights: {}".format(exc))
+        elif not os.path.exists(unet_dir):
+            raise FileNotFoundError("no saved model found at {} or {}".format(unet_dir, state_path))
 
     model = nn.DataParallel(model)
     model.to(device)
@@ -359,6 +386,18 @@ def main(
             num_training_steps=(len(train_dataloader) * config.num_epochs),
         )
 
+        if resume_state is not None:
+            optimizer.load_state_dict(resume_state["optimizer"])
+            for state in optimizer.state.values():
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        state[key] = value.to(device)
+            lr_scheduler.load_state_dict(resume_state["lr_scheduler"])
+            print("resumed at epoch {} / global_step {}".format(
+                resume_state.get("next_epoch", resume_state.get("epoch", -1) + 1),
+                resume_state.get("global_step", 0),
+            ))
+
         # train
         train_loop(
             config, 
@@ -368,7 +407,8 @@ def main(
             train_dataloader, 
             eval_dataloader, 
             lr_scheduler, 
-            device=device
+            device=device,
+            resume_state=resume_state
             )
     elif mode == "eval":
         """
@@ -428,6 +468,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_model_epochs', type=int, default=30)
     parser.add_argument('--output_dir', type=str, default=None, help='optional checkpoint/output directory override')
     parser.add_argument('--resume_epoch', type=int, default=None, help='resume training starting at this epoch')
+    parser.add_argument('--resume_latest', action='store_true', help='resume full training state from output_dir/training_state.pt if it exists')
 
     # novel options
     parser.add_argument('--use_ablated_segmentations', action='store_true', help='use mask ablated training and any evaluation? sometimes randomly remove class(es) from mask during training and sampling.')
@@ -464,6 +505,7 @@ if __name__ == "__main__":
         args.save_model_epochs,
         args.output_dir,
         args.resume_epoch,
+        args.resume_latest,
         args.use_ablated_segmentations,
         not args.eval_noshuffle_dataloader,
 

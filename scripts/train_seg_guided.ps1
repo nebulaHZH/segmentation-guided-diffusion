@@ -16,6 +16,7 @@ param(
     [int]$SaveImageEpochs = 10,
     [int]$SaveModelEpochs = 25,
     [int]$ResumeEpoch = -1,
+    [switch]$NoResume,
     [switch]$UseAblatedSegmentations,
     [switch]$RebuildSegDir
 )
@@ -129,6 +130,9 @@ $MainArgs = @(
 if ($ResumeEpoch -ge 0) {
     $MainArgs += @("--resume_epoch", $ResumeEpoch)
 }
+elseif (-not $NoResume) {
+    $MainArgs += "--resume_latest"
+}
 
 if ($UseAblatedSegmentations) {
     $MainArgs += "--use_ablated_segmentations"
@@ -137,6 +141,15 @@ if ($UseAblatedSegmentations) {
 Write-Host "Segmentation dir: $SegDir"
 Write-Host "Output dir base: $OutputDir"
 Write-Host "Note: main.py appends '-segguided' to the final output directory."
+if ($ResumeEpoch -ge 0) {
+    Write-Host "Resume: loading model weights and starting at epoch $ResumeEpoch."
+}
+elseif ($NoResume) {
+    Write-Host "Resume: disabled; starting a fresh training run."
+}
+else {
+    Write-Host "Resume: automatic; will use training_state.pt if it exists."
+}
 
 Push-Location $Repo
 try {

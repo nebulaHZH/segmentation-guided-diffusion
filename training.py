@@ -19,6 +19,8 @@ import safetensors.torch
 
 from eval import evaluate, add_segmentations_to_noise, SegGuidedDDPMPipeline, SegGuidedDDIMPipeline
 
+TRAINING_STATE_NAME = "training_state.pt"
+
 @dataclass
 class TrainingConfig:
     model_type: str = "DDPM"
@@ -60,12 +62,37 @@ class TrainingConfig:
     # (see "Classifier-free guidance resolution weighting." in ControlNet paper)
 
 
-def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval_dataloader, lr_scheduler, device='cuda'):
+def training_state_path(output_dir):
+    return os.path.join(output_dir, TRAINING_STATE_NAME)
+
+
+def save_training_state(config, model, optimizer, lr_scheduler, epoch, global_step):
+    os.makedirs(config.output_dir, exist_ok=True)
+    state_path = training_state_path(config.output_dir)
+    tmp_path = state_path + ".tmp"
+    torch.save(
+        {
+            "epoch": epoch,
+            "next_epoch": epoch + 1,
+            "global_step": global_step,
+            "model": model.module.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
+            "config": dict(config.__dict__),
+        },
+        tmp_path,
+    )
+    os.replace(tmp_path, state_path)
+
+
+def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval_dataloader, lr_scheduler, device='cuda', resume_state=None):
     # Prepare everything
     # There is no specific order to remember, you just need to unpack the
     # objects in the same order you gave them to the prepare method.
 
     global_step = 0
+    if resume_state is not None:
+        global_step = resume_state.get("global_step", 0)
 
     # logging
     run_name = '{}-{}-{}'.format(config.model_type.lower(), config.dataset, config.image_size)
@@ -74,11 +101,21 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
     writer = SummaryWriter(comment=run_name)
 
     # for loading segs to condition on:
-    eval_dataloader = iter(eval_dataloader)
+    eval_dataloader_iter = iter(eval_dataloader)
+
+    def next_eval_batch():
+        nonlocal eval_dataloader_iter
+        try:
+            return next(eval_dataloader_iter)
+        except StopIteration:
+            eval_dataloader_iter = iter(eval_dataloader)
+            return next(eval_dataloader_iter)
 
     # Now you train the model
     start_epoch = 0
-    if config.resume_epoch is not None:
+    if resume_state is not None:
+        start_epoch = resume_state.get("next_epoch", resume_state.get("epoch", -1) + 1)
+    elif config.resume_epoch is not None:
         start_epoch = config.resume_epoch
 
     for epoch in range(start_epoch, config.num_epochs):
@@ -175,7 +212,7 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
         if config.model_type == "DDPM":
             if config.segmentation_guided:
                 pipeline = SegGuidedDDPMPipeline(
-                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader_iter, external_config=config
                     )
             else:
                 if config.class_conditional:
@@ -185,7 +222,7 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
         elif config.model_type == "DDIM":
             if config.segmentation_guided:
                 pipeline = SegGuidedDDIMPipeline(
-                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
+                    unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader_iter, external_config=config
                     )
             else:
                 if config.class_conditional:
@@ -195,9 +232,11 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, eval
 
         model.eval()
 
+        save_training_state(config, model, optimizer, lr_scheduler, epoch, global_step)
+
         if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
             if config.segmentation_guided:
-                seg_batch = next(eval_dataloader)
+                seg_batch = next_eval_batch()
                 evaluate(config, epoch, pipeline, seg_batch)
             else:
                 evaluate(config, epoch, pipeline)

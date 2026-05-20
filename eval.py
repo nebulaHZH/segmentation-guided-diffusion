@@ -322,9 +322,19 @@ def evaluate_generation(
             save_image(result_masks, f"{test_dir}/mask_removal_masks.png", normalize=True, 
                     nrow=cols*len(seg_batch.keys()) - 2)
 
+def _seg_batch_size(seg_batch):
+    for k, v in seg_batch.items():
+        if k.startswith("seg_"):
+            return v.shape[0]
+    raise ValueError("segmentation batch does not contain any 'seg_' tensors")
+
+
 def convert_segbatch_to_multiclass(shape, segmentations_batch, config, device):
     # NOTE: this generic function assumes that segs don't overlap
     # put all segs on same channel
+    shape = list(shape)
+    shape[0] = _seg_batch_size(segmentations_batch)
+    shape = tuple(shape)
     segs = torch.zeros(shape).to(device)
     for k, seg in segmentations_batch.items():
         if k.startswith("seg_"):
@@ -388,8 +398,9 @@ def evaluate(config, epoch, pipeline, seg_batch=None, class_label_cfg=None, tran
     # The default pipeline output type is `List[PIL.Image]`
 
     if config.segmentation_guided:
+        current_batch_size = _seg_batch_size(seg_batch)
         images = pipeline(
-            batch_size = config.eval_batch_size,
+            batch_size = current_batch_size,
             seg_batch=seg_batch,
             class_label_cfg=class_label_cfg,
             translate=translate,
