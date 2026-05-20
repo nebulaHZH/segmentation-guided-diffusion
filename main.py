@@ -25,12 +25,17 @@ def main(
     img_dir,
     seg_dir,
     model_type,
+    model_size,
     segmentation_guided,
     segmentation_channel_mode,
     num_segmentation_classes,
     train_batch_size,
     eval_batch_size,
     num_epochs,
+    learning_rate,
+    save_image_epochs,
+    save_model_epochs,
+    output_dir,
     resume_epoch=None,
     use_ablated_segmentations=False,
     eval_shuffle_dataloader=True,
@@ -38,14 +43,17 @@ def main(
     # arguments only used in eval
     eval_mask_removal=False,
     eval_blank_mask=False,
-    eval_sample_size=1000
+    eval_sample_size=40,
+    eval_scheduler=None,
+    eval_num_inference_steps=None
 ):
     #GPUs
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('running on {}'.format(device))
 
     # load config
-    output_dir = '{}-{}-{}'.format(model_type.lower(), dataset, img_size)  # the model namy locally and on the HF Hub
+    if output_dir is None:
+        output_dir = '{}-{}-{}'.format(model_type.lower(), dataset, img_size)  # the model name locally and on the HF Hub
     if segmentation_guided:
         output_dir += "-segguided"
         assert seg_dir is not None, "must provide segmentation directory for segmentation guided training/sampling"
@@ -72,10 +80,15 @@ def main(
         train_batch_size = train_batch_size,
         eval_batch_size = eval_batch_size,
         num_epochs = num_epochs,
+        learning_rate = learning_rate,
+        save_image_epochs = save_image_epochs,
+        save_model_epochs = save_model_epochs,
         output_dir = output_dir,
         model_type=model_type,
         resume_epoch=resume_epoch,
-        use_ablated_segmentations=use_ablated_segmentations
+        use_ablated_segmentations=use_ablated_segmentations,
+        eval_scheduler=eval_scheduler,
+        eval_num_inference_steps=eval_num_inference_steps
     )
 
     load_images_as_np_arrays = False
@@ -288,12 +301,21 @@ def main(
         elif config.segmentation_channel_mode == "multi":
             in_channels = len(seg_types) + in_channels
 
+    if model_size == "base":
+        block_out_channels = (128, 128, 256, 256, 512, 512)
+    elif model_size == "small":
+        block_out_channels = (64, 64, 128, 128, 256, 256)
+    else:
+        raise ValueError("model_size must be 'base' or 'small'")
+
+    print("using model_size={} with block_out_channels={}".format(model_size, block_out_channels))
+
     model = diffusers.UNet2DModel(
         sample_size=config.image_size,  # the target image resolution
         in_channels=in_channels,  # the number of input channels, 3 for RGB images
         out_channels=num_img_channels,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
-        block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channes for each UNet block
+        block_out_channels=block_out_channels,  # the number of output channels for each UNet block
         down_block_types=(
             "DownBlock2D",  # a regular ResNet downsampling block
             "DownBlock2D",
@@ -394,12 +416,17 @@ if __name__ == "__main__":
     parser.add_argument('--img_dir', type=str, default=None)
     parser.add_argument('--seg_dir', type=str, default=None)
     parser.add_argument('--model_type', type=str, default="DDPM")
+    parser.add_argument('--model_size', type=str, default="base", choices=["base", "small"], help='base matches the paper code; small is friendlier to 8GB GPUs')
     parser.add_argument('--segmentation_guided', action='store_true', help='use segmentation guided training/sampling?')
     parser.add_argument('--segmentation_channel_mode', type=str, default="single", help='single == all segmentations in one channel, multi == each segmentation in its own channel')
     parser.add_argument('--num_segmentation_classes', type=int, default=None, help='number of segmentation classes, including background')
     parser.add_argument('--train_batch_size', type=int, default=32)
     parser.add_argument('--eval_batch_size', type=int, default=8)
     parser.add_argument('--num_epochs', type=int, default=200)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--save_image_epochs', type=int, default=20)
+    parser.add_argument('--save_model_epochs', type=int, default=30)
+    parser.add_argument('--output_dir', type=str, default=None, help='optional checkpoint/output directory override')
     parser.add_argument('--resume_epoch', type=int, default=None, help='resume training starting at this epoch')
 
     # novel options
@@ -412,6 +439,8 @@ if __name__ == "__main__":
     parser.add_argument('--eval_mask_removal', action='store_true', help='if true, evaluate gradually removing anatomies from mask and re-sampling')
     parser.add_argument('--eval_blank_mask', action='store_true', help='if true, evaluate sampling conditioned on blank (zeros) masks')
     parser.add_argument('--eval_sample_size', type=int, default=1000, help='number of images to sample when using eval_many mode')
+    parser.add_argument('--eval_scheduler', type=str, default=None, choices=["DDPM", "DDIM"], help='optional scheduler to use only during evaluation/sampling')
+    parser.add_argument('--eval_num_inference_steps', type=int, default=None, help='optional denoising step count for evaluation/sampling')
 
     args = parser.parse_args()
 
@@ -423,12 +452,17 @@ if __name__ == "__main__":
         args.img_dir,
         args.seg_dir,
         args.model_type,
+        args.model_size,
         args.segmentation_guided,
         args.segmentation_channel_mode,
         args.num_segmentation_classes,
         args.train_batch_size,
         args.eval_batch_size,
         args.num_epochs,
+        args.learning_rate,
+        args.save_image_epochs,
+        args.save_model_epochs,
+        args.output_dir,
         args.resume_epoch,
         args.use_ablated_segmentations,
         not args.eval_noshuffle_dataloader,
@@ -436,5 +470,7 @@ if __name__ == "__main__":
         # args only used in eval
         args.eval_mask_removal,
         args.eval_blank_mask,
-        args.eval_sample_size
+        args.eval_sample_size,
+        args.eval_scheduler,
+        args.eval_num_inference_steps
     )

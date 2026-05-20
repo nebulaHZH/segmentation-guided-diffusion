@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 import diffusers
+import safetensors.torch
 
 from eval import evaluate, add_segmentations_to_noise, SegGuidedDDPMPipeline, SegGuidedDDIMPipeline
 
@@ -45,6 +46,8 @@ class TrainingConfig:
     use_ablated_segmentations: bool = False
     dataset: str = "breast_mri"
     resume_epoch: int = None
+    eval_scheduler: str = None
+    eval_num_inference_steps: int = None
 
     # EXPERIMENTAL/UNTESTED: classifier-free class guidance and image translation
     class_conditional: bool = False

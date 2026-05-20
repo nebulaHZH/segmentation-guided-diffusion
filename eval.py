@@ -18,6 +18,34 @@ from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
+def _eval_scheduler_name(config):
+    return (config.eval_scheduler or config.model_type).upper()
+
+def _eval_num_inference_steps(config):
+    return getattr(config, "eval_num_inference_steps", None)
+
+def _pipeline_scheduler(config, noise_scheduler):
+    if _eval_scheduler_name(config) == "DDPM":
+        return diffusers.DDPMScheduler.from_config(noise_scheduler.config)
+    if _eval_scheduler_name(config) == "DDIM":
+        return diffusers.DDIMScheduler.from_config(noise_scheduler.config)
+    raise ValueError("eval_scheduler must be DDPM or DDIM")
+
+def _make_eval_pipeline(config, model, noise_scheduler, eval_dataloader):
+    scheduler = _pipeline_scheduler(config, noise_scheduler)
+    if _eval_scheduler_name(config) == "DDPM":
+        if config.segmentation_guided:
+            return SegGuidedDDPMPipeline(
+                unet=model.module, scheduler=scheduler, eval_dataloader=eval_dataloader, external_config=config
+            )
+        return diffusers.DDPMPipeline(unet=model.module, scheduler=scheduler)
+
+    if config.segmentation_guided:
+        return SegGuidedDDIMPipeline(
+            unet=model.module, scheduler=scheduler, eval_dataloader=eval_dataloader, external_config=config
+        )
+    return diffusers.DDIMPipeline(unet=model.module, scheduler=scheduler)
+
 ####################
 # segmentation-guided DDPM
 ####################
@@ -31,22 +59,7 @@ def evaluate_sample_many(
     device='cuda'
     ):
 
-    # for loading segs to condition on:
-    # setup for sampling
-    if config.model_type == "DDPM":
-        if config.segmentation_guided:
-            pipeline = SegGuidedDDPMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
-                )
-        else:
-            pipeline = diffusers.DDPMPipeline(unet=model.module, scheduler=noise_scheduler)
-    elif config.model_type == "DDIM":
-        if config.segmentation_guided:
-            pipeline = SegGuidedDDIMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
-                )
-        else:
-            pipeline = diffusers.DDIMPipeline(unet=model.module, scheduler=noise_scheduler)
+    pipeline = _make_eval_pipeline(config, model, noise_scheduler, eval_dataloader)
 
 
     sample_dir = test_dir = os.path.join(config.output_dir, "samples_many_{}".format(sample_size))
@@ -54,6 +67,22 @@ def evaluate_sample_many(
         os.makedirs(sample_dir)
 
     num_sampled = 0
+    if not config.segmentation_guided:
+        while num_sampled < sample_size:
+            current_batch_size = min(config.eval_batch_size, sample_size - num_sampled)
+            images = pipeline(
+                batch_size=current_batch_size,
+                **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
+            ).images
+
+            for i, img in enumerate(images):
+                img_fname = f"{sample_dir}/{num_sampled + i:04d}.png"
+                img.save(img_fname)
+
+            num_sampled += len(images)
+            print("sampled {}/{}.".format(num_sampled, sample_size))
+        return
+
     # keep sampling images until we have enough
     for bidx, seg_batch in tqdm(enumerate(eval_dataloader), total=len(eval_dataloader)):
         if num_sampled < sample_size:
@@ -66,10 +95,12 @@ def evaluate_sample_many(
                 images = pipeline(
                     batch_size = current_batch_size,
                     seg_batch=seg_batch,
+                    **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
                 ).images
             else:
                 images = pipeline(
                     batch_size = current_batch_size,
+                    **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
                 ).images
 
             # save each image in the list separately
@@ -115,22 +146,7 @@ def evaluate_generation(
                 if k.startswith("seg_"):
                     seg_batch[k] = torch.zeros_like(v)
 
-    # setup for sampling
-    # After each epoch you optionally sample some demo images with evaluate() and save the model
-    if config.model_type == "DDPM":
-        if config.segmentation_guided:
-            pipeline = SegGuidedDDPMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
-                )
-        else:
-            pipeline = diffusers.DDPMPipeline(unet=model.module, scheduler=noise_scheduler)
-    elif config.model_type == "DDIM":
-        if config.segmentation_guided:
-            pipeline = SegGuidedDDIMPipeline(
-                unet=model.module, scheduler=noise_scheduler, eval_dataloader=eval_dataloader, external_config=config
-                )
-        else:
-            pipeline = diffusers.DDIMPipeline(unet=model.module, scheduler=noise_scheduler)
+    pipeline = _make_eval_pipeline(config, model, noise_scheduler, eval_dataloader)
 
     # sample some images
     if config.segmentation_guided:
@@ -376,12 +392,14 @@ def evaluate(config, epoch, pipeline, seg_batch=None, class_label_cfg=None, tran
             batch_size = config.eval_batch_size,
             seg_batch=seg_batch,
             class_label_cfg=class_label_cfg,
-            translate=translate
+            translate=translate,
+            **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
         ).images
     else:
         images = pipeline(
             batch_size = config.eval_batch_size,
             # TODO: implement CFG and naive conditioning sampling for non-seg-guided pipelines (also needed for translation)
+            **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
         ).images
 
     # Make a grid out of the images
