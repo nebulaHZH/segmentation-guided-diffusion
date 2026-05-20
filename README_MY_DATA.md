@@ -77,7 +77,7 @@ outputs/ddim-{DATASET_NAME}-256-segguided
 powershell -ExecutionPolicy Bypass -File .\scripts\train_seg_guided.ps1 -DatasetName brisc_glioma_t1_gray -TrainBatchSize 1 -NumEpochs 300
 ```
 
-## 采样
+## 无 mask 模型采样
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\sample_unconditional.ps1 -DatasetName ixi_t2_gray -SampleSize 32
@@ -91,3 +91,48 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sample_unconditional.ps1 -Dat
 ```
 
 生成结果会保存到对应的 `outputs/.../samples_many_*` 目录下。
+
+## 有 mask 模型采样
+
+带 mask 训练完成后，使用 `sample_seg_guided.ps1` 采样。脚本默认读取训练集
+mask，即：
+
+```text
+data/prepared/{DATASET_NAME}_seg/all/train
+```
+
+同一张 mask 可以重复使用，因为每次采样的初始随机噪声不同，所以生成图像不会完全一样。
+如果要生成 400 张图像，直接运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\sample_seg_guided.ps1 -DatasetName brisc_glioma_t1_gray -SampleSize 400
+```
+
+另一个 BRISC mask 数据集可以这样运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\sample_seg_guided.ps1 -DatasetName brisc_glioma_bac_t1_gray -SampleSize 400
+```
+
+默认输出目录为：
+
+```text
+outputs/ddim-{DATASET_NAME}-256-segguided/samples_many_400_train
+```
+
+如果训练集 mask 数量少于 400，脚本会自动循环复用 mask，直到生成满 400 张。
+生成文件名会带数字前缀，例如 `0000_condon_xxx.png`，因此重复使用同一张 mask
+时不会覆盖之前生成的结果。
+
+如果想改用验证集或测试集 mask，可以指定 `-MaskSplit`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\sample_seg_guided.ps1 -DatasetName brisc_glioma_t1_gray -SampleSize 400 -MaskSplit val
+powershell -ExecutionPolicy Bypass -File .\scripts\sample_seg_guided.ps1 -DatasetName brisc_glioma_t1_gray -SampleSize 400 -MaskSplit test
+```
+
+默认采样器是 `DDPM`，去噪步数为 `40`。如果想用 DDIM，可以这样写：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\sample_seg_guided.ps1 -DatasetName brisc_glioma_t1_gray -SampleSize 400 -SampleScheduler DDIM -NumInferenceSteps 50
+```

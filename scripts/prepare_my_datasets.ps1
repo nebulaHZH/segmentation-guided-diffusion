@@ -21,8 +21,8 @@ if ($Overwrite) {
 }
 
 & $Python (Join-Path $Repo "scripts\prepare_2d_dataset.py") `
-    --source "E:\0_nebula\dataset\brisc_sort\glioma\bac" `
-    --output (Join-Path $OutputRoot "brisc_glioma_bac_t1_gray") `
+    --source "E:\0_nebula\data\cj_bad_resized_2" `
+    --output (Join-Path $OutputRoot "cta") `
     --mode L `
     --size $ImageSize `
     --seed $Seed `

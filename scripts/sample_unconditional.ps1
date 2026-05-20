@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("brisc_glioma_t1_gray","brisc_glioma_bac_t1_gray", "ixi_t1_gray", "ixi_t2_gray")]
+    [ValidateSet("brisc_glioma_t1_gray","brisc_glioma_bac_t1_gray","cta", "ixi_t1_gray", "ixi_t2_gray")]
     [string]$DatasetName,
 
     [int]$ImageSize = 256,

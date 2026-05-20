@@ -50,6 +50,7 @@ class TrainingConfig:
     resume_epoch: int = None
     eval_scheduler: str = None
     eval_num_inference_steps: int = None
+    eval_split: str = "test"
 
     # EXPERIMENTAL/UNTESTED: classifier-free class guidance and image translation
     class_conditional: bool = False

@@ -62,7 +62,10 @@ def evaluate_sample_many(
     pipeline = _make_eval_pipeline(config, model, noise_scheduler, eval_dataloader)
 
 
-    sample_dir = test_dir = os.path.join(config.output_dir, "samples_many_{}".format(sample_size))
+    split_suffix = ""
+    if config.segmentation_guided:
+        split_suffix = "_{}".format(getattr(config, "eval_split", "test"))
+    sample_dir = os.path.join(config.output_dir, "samples_many_{}{}".format(sample_size, split_suffix))
     if not os.path.exists(sample_dir):
         os.makedirs(sample_dir)
 
@@ -83,37 +86,40 @@ def evaluate_sample_many(
             print("sampled {}/{}.".format(num_sampled, sample_size))
         return
 
-    # keep sampling images until we have enough
-    for bidx, seg_batch in tqdm(enumerate(eval_dataloader), total=len(eval_dataloader)):
-        if num_sampled < sample_size:
-            if config.segmentation_guided:
-                current_batch_size = [v for k, v in seg_batch.items() if k.startswith("seg_")][0].shape[0]
+    def trim_seg_batch(seg_batch, batch_size):
+        trimmed = {}
+        for key, value in seg_batch.items():
+            if torch.is_tensor(value):
+                trimmed[key] = value[:batch_size]
             else:
-                current_batch_size = config.eval_batch_size
+                trimmed[key] = value[:batch_size]
+        return trimmed
 
-            if config.segmentation_guided:
-                images = pipeline(
-                    batch_size = current_batch_size,
-                    seg_batch=seg_batch,
-                    **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
-                ).images
-            else:
-                images = pipeline(
-                    batch_size = current_batch_size,
-                    **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
-                ).images
+    progress = tqdm(total=sample_size)
+    while num_sampled < sample_size:
+        for seg_batch in eval_dataloader:
+            if num_sampled >= sample_size:
+                break
 
-            # save each image in the list separately
+            available_batch_size = [v for k, v in seg_batch.items() if k.startswith("seg_")][0].shape[0]
+            current_batch_size = min(available_batch_size, sample_size - num_sampled)
+            seg_batch = trim_seg_batch(seg_batch, current_batch_size)
+
+            images = pipeline(
+                batch_size=current_batch_size,
+                seg_batch=seg_batch,
+                **({"num_inference_steps": _eval_num_inference_steps(config)} if _eval_num_inference_steps(config) is not None else {}),
+            ).images
+
+            # Save with a numeric prefix so repeated use of the same mask cannot overwrite previous samples.
             for i, img in enumerate(images):
-                if config.segmentation_guided:
-                    # name base on input mask fname
-                    img_fname = "{}/condon_{}".format(sample_dir, seg_batch["image_filenames"][i])
-                else:
-                    img_fname = f"{sample_dir}/{num_sampled + i:04d}.png"
+                img_fname = "{}/{:04d}_condon_{}".format(sample_dir, num_sampled + i, seg_batch["image_filenames"][i])
                 img.save(img_fname)
 
             num_sampled += len(images)
+            progress.update(len(images))
             print("sampled {}/{}.".format(num_sampled, sample_size))
+    progress.close()
 
 
 

@@ -46,7 +46,8 @@ def main(
     eval_blank_mask=False,
     eval_sample_size=40,
     eval_scheduler=None,
-    eval_num_inference_steps=None
+    eval_num_inference_steps=None,
+    eval_split="test"
 ):
     #GPUs
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,7 +69,7 @@ def main(
         evalset_name = "val"
         assert img_dir is not None, "must provide image directory for training"
     elif "eval" in mode:
-        evalset_name = "test"
+        evalset_name = eval_split
 
     print("using evaluation set: {}".format(evalset_name))
 
@@ -89,7 +90,8 @@ def main(
         resume_epoch=resume_epoch,
         use_ablated_segmentations=use_ablated_segmentations,
         eval_scheduler=eval_scheduler,
-        eval_num_inference_steps=eval_num_inference_steps
+        eval_num_inference_steps=eval_num_inference_steps,
+        eval_split=evalset_name
     )
 
     load_images_as_np_arrays = False
@@ -482,6 +484,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval_sample_size', type=int, default=1000, help='number of images to sample when using eval_many mode')
     parser.add_argument('--eval_scheduler', type=str, default=None, choices=["DDPM", "DDIM"], help='optional scheduler to use only during evaluation/sampling')
     parser.add_argument('--eval_num_inference_steps', type=int, default=None, help='optional denoising step count for evaluation/sampling')
+    parser.add_argument('--eval_split', type=str, default="test", choices=["train", "val", "test"], help='dataset split to use for evaluation/sampling')
 
     args = parser.parse_args()
 
@@ -514,5 +517,6 @@ if __name__ == "__main__":
         args.eval_blank_mask,
         args.eval_sample_size,
         args.eval_scheduler,
-        args.eval_num_inference_steps
+        args.eval_num_inference_steps,
+        args.eval_split
     )

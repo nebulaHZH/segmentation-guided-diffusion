@@ -1,13 +1,13 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("brisc_glioma_t1_gray","brisc_glioma_bac_t1_gray", "ixi_t1_gray", "ixi_t2_gray")]
+    [ValidateSet("brisc_glioma_t1_gray","brisc_glioma_bac_t1_gray","cta", "ixi_t1_gray", "ixi_t2_gray")]
     [string]$DatasetName,
 
     [string]$DataRoot = "",
     [int]$ImageSize = 256,
     [int]$TrainBatchSize = 2,
     [int]$EvalBatchSize = 4,
-    [int]$NumEpochs = 200,
+    [int]$NumEpochs = 300,
     [double]$LearningRate = 2e-5,
     [string]$ModelType = "DDIM",
     [ValidateSet("small", "base")]
