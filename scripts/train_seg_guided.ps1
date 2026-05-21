@@ -15,6 +15,7 @@ param(
     [int]$NumSegmentationClasses = 2,
     [int]$SaveImageEpochs = 10,
     [int]$SaveModelEpochs = 25,
+    [Alias("resume_epoch")]
     [int]$ResumeEpoch = -1,
     [switch]$NoResume,
     [switch]$UseAblatedSegmentations,

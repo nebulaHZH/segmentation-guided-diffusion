@@ -7,11 +7,12 @@ param(
     [int]$ImageSize = 256,
     [int]$TrainBatchSize = 2,
     [int]$EvalBatchSize = 4,
-    [int]$NumEpochs = 300,
+    [int]$NumEpochs = 1000,
     [double]$LearningRate = 2e-5,
     [string]$ModelType = "DDIM",
     [ValidateSet("small", "base")]
     [string]$ModelSize = "small",
+    [Alias("resume_epoch")]
     [int]$ResumeEpoch = -1,
     [switch]$NoResume
 )

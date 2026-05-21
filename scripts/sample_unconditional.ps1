@@ -5,7 +5,7 @@ param(
 
     [int]$ImageSize = 256,
     [int]$EvalBatchSize = 4,
-    [int]$SampleSize = 32,
+    [int]$SampleSize = 200,
     [string]$ModelType = "DDIM",
     [ValidateSet("small", "base")]
     [string]$ModelSize = "small",
